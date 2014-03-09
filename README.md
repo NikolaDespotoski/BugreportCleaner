@@ -8,7 +8,7 @@ Tool that extracts exceptions and life of PID from bugreport file generated from
 #Usage:
 Single bugreport:
 
-<code> bugreportcleaner.jar -p "com.my.package" -i "path/to/bugreport.txt" -o "path/to/output/clean_bugreport.txt\" -gc [optional] </code>
+<code> bugreportcleaner.jar -p "com.my.package" -i "path/to/bugreport.txt" -o "path/to/output/clean_bugreport.txt" -gc [optional] </code>
 
 Directory of bugreports:
 
