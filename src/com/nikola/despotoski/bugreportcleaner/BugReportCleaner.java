@@ -5,18 +5,39 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class BugReportCleaner {
 
+
+	private static final String TXT_SUFFIX = ".txt";
+	public static final String CLEAN_TXT_SUFFIX  = "_clean"+TXT_SUFFIX;
+	private static final String BUG_REPORT_PREFIX = "bugreport";
+	private static final FilenameFilter BUG_REPORT_TXT_FILTER = new FilenameFilter(){
+
+		@Override
+		public boolean accept(File dir, String bugreportName) {
+			return bugreportName.startsWith(BUG_REPORT_PREFIX) && bugreportName.endsWith(TXT_SUFFIX);
+		}};
+		
+	//--------------------------------------------------------------------------------------------------------------
 	private static String PID_START_REGEX = "Start proc (%s+) for ([a-z]+ [^:]+): pid=(\\d+) uid=(\\d+) gids=(.*)";
 	private static String PID_DIED_REGEX = "Process (%s+) \\(pid (\\d+)\\) has died.?";
 	private static String PID_GC_REGEX = "(GC_(?:CONCURRENT|FOR_M?ALLOC|EXTERNAL_ALLOC|EXPLICIT) )(freed <?\\d+.)(, \\d+\\% free \\d+./\\d+., )(paused \\d+ms(?:\\+\\d+ms)?)";
 	//Thanks to Maestro Jake Wharton for regexes https://github.com/JakeWharton/pidcat/blob/master/pidcat.py
-	private static String PID_FIND_REGEX = "(\\d+-\\d+.\\d+:\\d+\\:\\d+.\\d+\\s+%d+\\s+%d+)(.*)";
+	//--------------------------------------------------------------------------------------------------------------
+	private static String PID_FIND_REGEX = "(\\d+-\\d+.\\d+:\\d+\\:\\d+.\\d+\\s+%d+)(.*)"; //\\s+%d+
 	public static void printUsage(){
 		System.out.println("Usage -p \"com.my.package\" -i \"path/to/bugreport.txt\" -o \"path/to/output/clean_bugreport.txt\" -gc [optional]");
 		System.exit(6);
@@ -40,18 +61,37 @@ public class BugReportCleaner {
 				keepGc = true;
 			}
 		}
+		File input = new File(filePath);
 		if(packageName == null){
 			System.out.println("Package name is missing");
 			printUsage();
 		}else if(filePath == null){
 			System.out.println("Input bugreport is missing");
 			printUsage();
-		}else if(outPath == null){
+		}else if(outPath == null && input.exists() && !input.isDirectory()){
 			System.out.println("Output file is missing");
 			printUsage();
-		}else{
-			new Cleaner(filePath, new Predicate(packageName), outPath, keepGc).clean();
-			System.out.println("Done!");
+		}else{			
+			if(!input.isDirectory()){
+				new Cleaner(filePath, new Predicate(packageName), outPath, keepGc).clean();
+				System.out.println("Done!");
+			}else{
+
+				try {
+					ExecutorService executorService = Executors.newCachedThreadPool();
+					File[] bugReports = input.listFiles(BUG_REPORT_TXT_FILTER);
+					List<Callable<Void>> tasks = new ArrayList<Callable<Void>>();
+					for(File br : bugReports){
+						Cleaner c = new Cleaner(br.getAbsolutePath(), new Predicate(packageName), null, keepGc);
+						tasks.add(new CleanerRunnable(c));
+					}
+					executorService.invokeAll(tasks);
+					System.out.println("Done!");
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
 		}
 	}
 	
@@ -92,7 +132,7 @@ public class BugReportCleaner {
 		public Cleaner(String inputFile, Predicate p, String outputFile, boolean gc){
 			mInputFile = inputFile;
 			mPredicate = p;
-			mOutFile = new File(outputFile);
+			mOutFile = new File(outputFile!=null ? outputFile : inputFile.substring(0, inputFile.indexOf(".txt")).concat(BugReportCleaner.CLEAN_TXT_SUFFIX));
 			keepGC = gc;
 		}
 		public void clean(){
@@ -131,6 +171,20 @@ public class BugReportCleaner {
 				e.printStackTrace();
 			}
 		   
+		}
+		
+	}
+	
+	
+	private static class CleanerRunnable implements Callable<Void>{
+		private Cleaner mCleaner;
+		public CleanerRunnable(Cleaner c){
+			mCleaner = c;
+		}
+		@Override
+		public Void call() throws Exception {
+			mCleaner.clean();
+			return null;
 		}
 		
 	}
