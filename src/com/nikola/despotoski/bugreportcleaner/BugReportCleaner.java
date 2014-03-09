@@ -43,16 +43,17 @@ public class BugReportCleaner {
 		if(packageName == null){
 			System.out.println("Package name is missing");
 			printUsage();
-		}else if(filePath == null){
+		}
+		if(filePath == null){
 			System.out.println("Input bugreport is missing");
 			printUsage();
-		}else if(outPath == null){
+		}
+		if(outPath == null){
 			System.out.println("Output file is missing");
 			printUsage();
-		}else{
-			new Cleaner(filePath, new Predicate(packageName), outPath, keepGc).clean();
-			System.out.println("Done!");
 		}
+		new Cleaner(filePath, new Predicate(packageName), outPath, keepGc).clean();
+		System.out.println("Done!");
 	}
 	
 	private static class Predicate{
